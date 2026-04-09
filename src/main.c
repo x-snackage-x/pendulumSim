@@ -1,54 +1,164 @@
-/*
-Raylib example file.
-This is an example main file for a simple raylib project.
-Use this as a starting point or replace it with your code.
-
-by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit https://creativecommons.org/publicdomain/zero/1.0/
-
-*/
+#include <math.h>
+#include "resource_dir.h"
 
 #include "raylib.h"
 
-#include "resource_dir.h"	// utility header for SearchAndSetResourceDir
+#define RAYMATH_IMPLEMENTATIOn
+#include "raymath.h"
 
-int main ()
-{
-	// Tell the window to use vsync and work on high DPI displays
-	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
 
-	// Create the window and OpenGL context
-	InitWindow(800, 600, "Hello Raylib");
+#define VECTOR_DRAW_SCALE 10.0f
+int pendulumLength = 200;
 
-	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
-	SearchAndSetResourceDir("resources");
+typedef struct PendulumMass {
+    float mass;
+    Vector2 tension;
+    Vector2 acc;
+    Vector2 anchor;
+    Vector2 position;
+    Vector2 velocity;
+} PendulumMass;
 
-	// Load a texture from the resources directory
-	Texture wabbit = LoadTexture("wabbit_alpha.png");
-	
-	// game loop
-	while (!WindowShouldClose())		// run the loop until the user presses ESCAPE or presses the Close button on the window
-	{
-		// drawing
-		BeginDrawing();
+void drawVector(Vector2 anchorPos,
+                Vector2 vector,
+                Color color,
+                float scalingFactor) {
+    vector = Vector2Scale(vector, scalingFactor);
 
-		// Setup the back buffer for drawing (clear color and depth buffers)
-		ClearBackground(BLACK);
+    Vector2 sideOneV =
+        Vector2Scale(Vector2Rotate(vector, 3.0f * DEG2RAD), 0.9f);
+    Vector2 sideTwoV =
+        Vector2Scale(Vector2Rotate(vector, -3.0f * DEG2RAD), 0.9f);
 
-		// draw some text using the default font
-		DrawText("Hello Raylib", 200,200,20,WHITE);
+    Vector2 endPos = Vector2Add(anchorPos, vector);
+    Vector2 endPosOne = Vector2Add(anchorPos, sideOneV);
+    Vector2 endPosTwo = Vector2Add(anchorPos, sideTwoV);
 
-		// draw our texture to the screen
-		DrawTexture(wabbit, 400, 200, WHITE);
-		
-		// end the frame and get ready for the next one  (display frame, poll input, etc...)
-		EndDrawing();
-	}
+    DrawLineEx(anchorPos, endPos, 1.0f, color);
+    DrawLineEx(endPos, endPosOne, 1.0f, color);
+    DrawLineEx(endPos, endPosTwo, 1.0f, color);
+}
 
-	// cleanup
-	// unload our texture so it can be cleaned up
-	UnloadTexture(wabbit);
+void accelerateMass(PendulumMass* mass,
+                    float deltaTime,
+                    float g,
+                    bool numericalCorrection) {
+    Vector2 gravityVector = {0.0f, g};
+    float time = 0.0f;
+    Vector2 tensionVecNorm =
+        Vector2Normalize(Vector2Subtract(mass->position, mass->anchor));
+    float amplitude = Vector2Angle(gravityVector, tensionVecNorm);
+    mass->tension = Vector2Scale(tensionVecNorm, g * cosf(amplitude));
 
-	// destroy the window and cleanup the OpenGL context
-	CloseWindow();
-	return 0;
+    mass->acc = Vector2Subtract(gravityVector, mass->tension);
+    mass->velocity =
+        Vector2Add(mass->velocity, Vector2Scale(mass->acc, deltaTime));
+    mass->position =
+        Vector2Add(mass->position, Vector2Scale(mass->velocity, deltaTime));
+
+    // Numerical Correction
+    Vector2 pendulumVec = Vector2Subtract(mass->position, mass->anchor);
+    float calcPendulumLen = Vector2Length(pendulumVec);
+    float correction = calcPendulumLen - pendulumLength;
+    if(numericalCorrection && correction >= 1.0f) {
+        Vector2 pendulumVecNorm = Vector2Normalize(pendulumVec);
+        Vector2 correctionVec =
+            Vector2Negate(Vector2Scale(pendulumVecNorm, correction));
+        mass->position = Vector2Add(correctionVec, mass->position);
+
+        pendulumVec = Vector2Subtract(mass->position, mass->anchor);
+        calcPendulumLen = Vector2Length(pendulumVec);
+        float curDistanceDelta = calcPendulumLen - pendulumLength;
+
+        TraceLog(LOG_INFO, "Correction = %f - Corrected Dist. = %f", correction,
+                 curDistanceDelta);
+    }
+}
+
+int main() {
+    bool drawForces = true;
+    bool drawVelocities = true;
+    bool withNumericalCor = false;
+    const int padding = 2;
+    const int panelWidth = 200;
+    const int playGroundWidth = 1100;
+    const int screenWidth = playGroundWidth + panelWidth + padding * 3;
+    const int screenHeight = 900;
+    Vector2 origin = {0.0f, 0.0f};
+
+    Vector2 mousePosition = {0.0f};
+
+    SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
+    InitWindow(screenWidth, screenHeight, "PendulumSim");
+
+    float g = 9.81f;
+    float amplitude = 1.0f;
+    float stringWidth = 2.0f;
+    Vector2 pendulumAnchor = {(GetScreenWidth() - panelWidth) * 0.5f,
+                              GetScreenHeight() * 0.2f};
+    PendulumMass massA = {
+        .mass = 25.0f,
+        .anchor = pendulumAnchor,
+        .position =
+            Vector2Add(pendulumAnchor, (struct Vector2){0, pendulumLength})};
+
+    SetTargetFPS(60);
+    while(!WindowShouldClose()) {
+        mousePosition = GetMousePosition();
+        if(IsMouseButtonDown(MOUSE_BUTTON_LEFT) &&
+           mousePosition.x < playGroundWidth) {
+            Vector2 translationVec = Vector2Normalize(
+                Vector2Subtract(mousePosition, pendulumAnchor));
+            translationVec =
+                Vector2Scale(translationVec, (float)pendulumLength);
+            massA.position = Vector2Add(pendulumAnchor, translationVec);
+            massA.velocity = Vector2Zero();
+            massA.acc = Vector2Zero();
+            massA.tension = Vector2Zero();
+        }
+
+        float dt = GetFrameTime();
+        accelerateMass(&massA, dt, g, withNumericalCor);
+
+        BeginDrawing();
+        ClearBackground((struct Color){33, 33, 33, 0xFF});
+
+        DrawRectangleLines(padding, padding, playGroundWidth,
+                           screenHeight - padding * 2, RAYWHITE);
+        DrawRectangleLines(padding * 2 + playGroundWidth, padding, panelWidth,
+                           screenHeight - padding * 2, RAYWHITE);
+        GuiCheckBox(
+            (Rectangle){padding * 4 + playGroundWidth, padding * 4, 20, 20},
+            "Force Vectors", &drawForces);
+        GuiCheckBox((Rectangle){padding * 4 + playGroundWidth, padding * 8 + 20,
+                                20, 20},
+                    "Velocity Vectors", &drawForces);
+        GuiCheckBox((Rectangle){padding * 4 + playGroundWidth,
+                                padding * 12 + 40, 20, 20},
+                    "Numerical Correction", &withNumericalCor);
+
+        DrawLineEx(pendulumAnchor, massA.position, stringWidth, RAYWHITE);
+
+        DrawCircleV(pendulumAnchor, 10.0f, BLACK);
+        DrawCircleV(massA.position, massA.mass, MAROON);
+
+        if(drawForces) {
+            drawVector(massA.position, (struct Vector2){0.0f, g}, BLUE,
+                       VECTOR_DRAW_SCALE);
+            drawVector(massA.position, massA.tension, RED, VECTOR_DRAW_SCALE);
+            drawVector(massA.position, massA.acc, GREEN, VECTOR_DRAW_SCALE);
+        }
+
+        if(drawVelocities) {
+            drawVector(massA.position, Vector2Scale(massA.velocity, 20), WHITE,
+                       VECTOR_DRAW_SCALE);
+        }
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+    return 0;
 }
