@@ -9,17 +9,35 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
-#define VECTOR_DRAW_SCALE 10.0f
-int pendulumLength = 200;
+#define VECTOR_DRAW_SCALE 1.0f
+float pendulumLengthPxl = 200.0f;
+float firstMass = 25.0f;
 
 typedef struct PendulumMass {
+    int pendulumLength;
     float mass;
-    Vector2 tension;
-    Vector2 acc;
+    Vector2 tensionGravityComp;
+    Vector2 tensionCentripetalComp;
+    Vector2 accGravityComp;
+
+    Vector2 tensionSum;
+    Vector2 accNet;
     Vector2 anchor;
     Vector2 position;
     Vector2 velocity;
 } PendulumMass;
+
+void resetMass(PendulumMass* mass,
+               Vector2 pendulumAnchor,
+               Vector2 mousePosition) {
+    Vector2 trnsltnVecPxlSpce =
+        Vector2Normalize(Vector2Subtract(mousePosition, pendulumAnchor));
+    trnsltnVecPxlSpce = Vector2Scale(trnsltnVecPxlSpce, pendulumLengthPxl);
+    mass->position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce);
+    mass->velocity = Vector2Zero();
+    mass->accNet = Vector2Zero();
+    mass->tensionSum = Vector2Zero();
+}
 
 void drawVector(Vector2 anchorPos,
                 Vector2 vector,
@@ -41,46 +59,50 @@ void drawVector(Vector2 anchorPos,
     DrawLineEx(endPos, endPosTwo, 1.0f, color);
 }
 
-void accelerateMass(PendulumMass* mass,
-                    float deltaTime,
-                    float g,
-                    bool numericalCorrection) {
-    Vector2 gravityVector = {0.0f, g};
-    float time = 0.0f;
+void accelerateMass(PendulumMass* mass, float deltaTime, float g) {
+    Vector2 gravityVector = {0.0f, mass->mass * g};
+
     Vector2 tensionVecNorm =
         Vector2Normalize(Vector2Subtract(mass->position, mass->anchor));
-    float amplitude = Vector2Angle(gravityVector, tensionVecNorm);
-    mass->tension = Vector2Scale(tensionVecNorm, g * cosf(amplitude));
 
-    mass->acc = Vector2Subtract(gravityVector, mass->tension);
-    mass->velocity =
-        Vector2Add(mass->velocity, Vector2Scale(mass->acc, deltaTime));
+    float amplitude = Vector2Angle(gravityVector, tensionVecNorm);
+
+    // Calculate Kinetics: Gravity Components
+    mass->tensionGravityComp =
+        Vector2Scale(tensionVecNorm, mass->mass * g * cosf(amplitude));
+    mass->accGravityComp =
+        Vector2Subtract(gravityVector, mass->tensionGravityComp);
+
+    // Calculate Kinetics: Centripetal Components
+    float cntrptlForceFactor = mass->mass / mass->pendulumLength;
+    float vSquared = Vector2LengthSqr(mass->velocity);
+
+    mass->tensionCentripetalComp =
+        Vector2Scale(tensionVecNorm, -cntrptlForceFactor * vSquared);
+
+    // Sum Forces
+    if(vSquared == 0.0f) {
+        mass->tensionSum = Vector2Zero();
+    } else {
+        mass->tensionSum = Vector2Add(mass->tensionCentripetalComp,
+                                      Vector2Negate(mass->tensionGravityComp));
+    }
+
+    mass->accNet = Vector2Add(mass->tensionSum, gravityVector);
+
+    // Calculate Velocity and Position step delta
+    mass->velocity = Vector2Add(
+        mass->velocity, Vector2Scale(mass->accNet, deltaTime / mass->mass));
+
     mass->position =
         Vector2Add(mass->position, Vector2Scale(mass->velocity, deltaTime));
-
-    // Numerical Correction
-    Vector2 pendulumVec = Vector2Subtract(mass->position, mass->anchor);
-    float calcPendulumLen = Vector2Length(pendulumVec);
-    float correction = calcPendulumLen - pendulumLength;
-    if(numericalCorrection && correction >= 1.0f) {
-        Vector2 pendulumVecNorm = Vector2Normalize(pendulumVec);
-        Vector2 correctionVec =
-            Vector2Negate(Vector2Scale(pendulumVecNorm, correction));
-        mass->position = Vector2Add(correctionVec, mass->position);
-
-        pendulumVec = Vector2Subtract(mass->position, mass->anchor);
-        calcPendulumLen = Vector2Length(pendulumVec);
-        float curDistanceDelta = calcPendulumLen - pendulumLength;
-
-        TraceLog(LOG_INFO, "Correction = %f - Corrected Dist. = %f", correction,
-                 curDistanceDelta);
-    }
 }
 
 int main() {
+    bool pause = true;
+    bool reset = false;
     bool drawForces = true;
     bool drawVelocities = true;
-    bool withNumericalCor = false;
     const int padding = 2;
     const int panelWidth = 200;
     const int playGroundWidth = 1100;
@@ -94,50 +116,94 @@ int main() {
     InitWindow(screenWidth, screenHeight, "PendulumSim");
 
     float g = 9.81f;
-    float amplitude = 1.0f;
+    float amplitude = -30.0f * DEG2RAD;
     float stringWidth = 2.0f;
     Vector2 pendulumAnchor = {(GetScreenWidth() - panelWidth) * 0.5f,
                               GetScreenHeight() * 0.2f};
+
+    Vector2 trnsltnVecPxlSpce = {.y = pendulumLengthPxl};
+    trnsltnVecPxlSpce = Vector2Rotate(trnsltnVecPxlSpce, amplitude);
+
     PendulumMass massA = {
         .mass = 25.0f,
+        .pendulumLength = pendulumLengthPxl,
         .anchor = pendulumAnchor,
-        .position =
-            Vector2Add(pendulumAnchor, (struct Vector2){0, pendulumLength})};
+        .position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce)};
 
     SetTargetFPS(60);
     while(!WindowShouldClose()) {
+        if(massA.pendulumLength != (int)pendulumLengthPxl ||
+           massA.mass != firstMass) {
+            massA.pendulumLength = (int)pendulumLengthPxl;
+            massA.mass = firstMass;
+            reset = true;
+        }
+
         mousePosition = GetMousePosition();
         if(IsMouseButtonDown(MOUSE_BUTTON_LEFT) &&
            mousePosition.x < playGroundWidth) {
-            Vector2 translationVec = Vector2Normalize(
-                Vector2Subtract(mousePosition, pendulumAnchor));
-            translationVec =
-                Vector2Scale(translationVec, (float)pendulumLength);
-            massA.position = Vector2Add(pendulumAnchor, translationVec);
+            resetMass(&massA, pendulumAnchor, mousePosition);
+        } else if(reset) {
+            trnsltnVecPxlSpce.x = 0;
+            trnsltnVecPxlSpce.y = pendulumLengthPxl;
+            trnsltnVecPxlSpce = Vector2Rotate(trnsltnVecPxlSpce, amplitude);
+            massA.position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce);
             massA.velocity = Vector2Zero();
-            massA.acc = Vector2Zero();
-            massA.tension = Vector2Zero();
+            massA.accNet = Vector2Zero();
+            massA.tensionSum = Vector2Zero();
+
+            reset = false;
         }
 
+        if(IsKeyPressed(KEY_SPACE))
+            pause = !pause;
+
         float dt = GetFrameTime();
-        accelerateMass(&massA, dt, g, withNumericalCor);
+        if(!pause)
+            accelerateMass(&massA, dt * 3, g);
 
         BeginDrawing();
         ClearBackground((struct Color){33, 33, 33, 0xFF});
 
-        DrawRectangleLines(padding, padding, playGroundWidth,
-                           screenHeight - padding * 2, RAYWHITE);
         DrawRectangleLines(padding * 2 + playGroundWidth, padding, panelWidth,
                            screenHeight - padding * 2, RAYWHITE);
+
+        int nGuiElement = 0;
+        float guiElementHeight = 20;
+        float guiElementsXStart = padding * 4 + playGroundWidth;
+        float guiElementsYStart = padding * 4;
+        float guiElementYStep = 20 + padding * 2;
         GuiCheckBox(
-            (Rectangle){padding * 4 + playGroundWidth, padding * 4, 20, 20},
+            (Rectangle){guiElementsXStart,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep, 20,
+                        guiElementHeight},
             "Force Vectors", &drawForces);
-        GuiCheckBox((Rectangle){padding * 4 + playGroundWidth, padding * 8 + 20,
-                                20, 20},
-                    "Velocity Vectors", &drawForces);
-        GuiCheckBox((Rectangle){padding * 4 + playGroundWidth,
-                                padding * 12 + 40, 20, 20},
-                    "Numerical Correction", &withNumericalCor);
+        GuiCheckBox(
+            (Rectangle){guiElementsXStart,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep, 20,
+                        guiElementHeight},
+            "Velocity Vectors", &drawVelocities);
+
+        GuiLabel(
+            (Rectangle){guiElementsXStart + 15,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep,
+                        panelWidth - 30 * padding, guiElementHeight},
+            "Pendulum Length 1 [m]");
+        GuiSlider(
+            (Rectangle){guiElementsXStart + 15,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep,
+                        panelWidth - 30 * padding, guiElementHeight},
+            "10", "1000", &pendulumLengthPxl, 10, 1000);
+        GuiLabel(
+            (Rectangle){guiElementsXStart + 15,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep,
+                        panelWidth - 30 * padding, guiElementHeight},
+            "Mass [kg]");
+        GuiSlider(
+            (Rectangle){guiElementsXStart + 15,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep,
+                        panelWidth - 30 * padding, guiElementHeight},
+            "10", "200", &firstMass, 10, 200);
 
         DrawLineEx(pendulumAnchor, massA.position, stringWidth, RAYWHITE);
 
@@ -145,10 +211,16 @@ int main() {
         DrawCircleV(massA.position, massA.mass, MAROON);
 
         if(drawForces) {
-            drawVector(massA.position, (struct Vector2){0.0f, g}, BLUE,
+            drawVector(massA.position, (struct Vector2){0.0f, massA.mass * g},
+                       BLUE, VECTOR_DRAW_SCALE);
+            drawVector(massA.position, Vector2Negate(massA.tensionGravityComp),
+                       RED, VECTOR_DRAW_SCALE);
+            drawVector(
+                Vector2Subtract(massA.position, massA.tensionGravityComp),
+                massA.tensionCentripetalComp, PINK, VECTOR_DRAW_SCALE);
+            drawVector(massA.position, massA.accGravityComp, GREEN,
                        VECTOR_DRAW_SCALE);
-            drawVector(massA.position, massA.tension, RED, VECTOR_DRAW_SCALE);
-            drawVector(massA.position, massA.acc, GREEN, VECTOR_DRAW_SCALE);
+            drawVector(massA.position, massA.accNet, YELLOW, VECTOR_DRAW_SCALE);
         }
 
         if(drawVelocities) {
