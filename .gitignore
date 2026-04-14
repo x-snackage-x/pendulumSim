@@ -406,3 +406,9 @@ Makefile
 *.swo
 *.swn
 /build/compile_commands.json
+
+# Generated Visual Studio Solution files
+*.vcxproj*
+
+# Generated make files
+*.make
