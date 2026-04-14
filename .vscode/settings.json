@@ -7,5 +7,17 @@
 		"**/.DS_Store": true,
 		"**/*.o": true,
 		"**/*.exe": true,
-	}
+	},
+	"cSpell.words": [
+		"cntrptl",
+		"HIGHDPI",
+		"RAYGUI",
+		"raylib",
+		"Raylib",
+		"RAYLIBQS",
+		"RAYMATH",
+		"RAYWHITE",
+		"Spce",
+		"trnsltn"
+	]
 }
