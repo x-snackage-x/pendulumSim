@@ -6,20 +6,36 @@ https://github.com/user-attachments/assets/c5c1250d-bde4-41e1-aace-3c410c419423
 The project was built with using Jeffery Myers's [Raylib-Quickstart](https://github.com/raylib-extras/raylib-quickstart). Original *README.md* provided under *README_RAYLIBQS.md*.
 
 ## Build
-
 For more detailed info on building the project see *README_RAYLIBQS.md*.
 
-### Linux
+### Linux 
 
-todo
+To generate the makefiles:
 
-### Windows
+* `cd` into the build folder
+* run `./premake5 gmake`
 
-todo
+To build:
+
+* At the top of the generated `Makefile` set the desired `config`:
+
+```Makefile
+ifndef config
+  config=debug_x86
+endif
+```
+
+* Run `make`.
+
+### Windows using Visual Studio
+
+To generate Visual Studio project solution:
+* Run `build-VisualStudio202*.bat`
+* Open project using Visual Studio and build
 
 ### MacOS
 
-I don't know man. I'm poor. See *README_RAYLIBQS.md*.
+Analogous to Linux but run `./premake5.osx gmake` instead
 
 ## Dependencies
 
@@ -30,12 +46,9 @@ raylib and its dependencies:
 
 ## Todo
 
-1. Add Resistance force
-1. Add scaling (currently 1 pixel/m)
 1. Add 2nd Mass/Double Pendulum
 1. Add trail
 1. Add Status box
 1. Anchor Responsive to Screen size?
-1. Windows build
-1. Readme
-1. Icons
+1. Add Resistance force?
+1. Icon

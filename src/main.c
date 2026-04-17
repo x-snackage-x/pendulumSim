@@ -10,8 +10,16 @@
 #include "raygui.h"
 
 #define VECTOR_DRAW_SCALE 1.0f
-float pendulumLengthPxl = 200.0f;
-float firstMass = 25.0f;
+float pixelScaleFactor = 1e-1f;
+float massScaleFactor = 0.5f;
+float pendulumLengthPxl = 300.0f;
+float firstMass = 25.f;
+
+float inPendulumLengthPxl = 300.0f;
+
+int setMode = 1;
+int dropdownBoxActive = 1;
+bool dropDownEditMode = false;
 
 typedef struct PendulumMass {
     int pendulumLength;
@@ -33,7 +41,10 @@ void resetMass(PendulumMass* mass,
     Vector2 trnsltnVecPxlSpce =
         Vector2Normalize(Vector2Subtract(mousePosition, pendulumAnchor));
     trnsltnVecPxlSpce = Vector2Scale(trnsltnVecPxlSpce, pendulumLengthPxl);
-    mass->position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce);
+    Vector2 trnsltnVecWrldSpce =
+        Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
+
+    mass->position = trnsltnVecWrldSpce;
     mass->velocity = Vector2Zero();
     mass->accNet = Vector2Zero();
     mass->tensionSum = Vector2Zero();
@@ -80,7 +91,7 @@ void accelerateMass(PendulumMass* mass, float deltaTime, float g) {
     Vector2 gravityVector = {0.0f, mass->mass * g};
 
     Vector2 tensionVecNorm =
-        Vector2Normalize(Vector2Subtract(mass->position, mass->anchor));
+        Vector2Normalize(Vector2Subtract(mass->position, Vector2Zero()));
 
     float amplitude = Vector2Angle(gravityVector, tensionVecNorm);
 
@@ -127,7 +138,7 @@ int main() {
     const int panelWidth = 260;
     const int playGroundWidth = 1100;
     const int screenWidth = playGroundWidth + panelWidth + padding * 3;
-    const int screenHeight = 900;
+    const int screenHeight = 700;
     Vector2 origin = {0.0f, 0.0f};
 
     Vector2 mousePosition = {0.0f};
@@ -140,25 +151,45 @@ int main() {
     float stringWidth = 4.0f;
     Vector2 pendulumAnchor = {
         (GetScreenWidth() - panelWidth - padding * 3) * 0.5f,
-        GetScreenHeight() * 0.2f};
+        GetScreenHeight() * 0.1f};
 
     Vector2 trnsltnVecPxlSpce = {.y = pendulumLengthPxl};
     trnsltnVecPxlSpce = Vector2Rotate(trnsltnVecPxlSpce, amplitude);
 
+    Vector2 trnsltnVecWrldSpce =
+        Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
     PendulumMass massA = {
         .mass = 25.0f,
-        .pendulumLength = pendulumLengthPxl,
+        .pendulumLength = pendulumLengthPxl * pixelScaleFactor,
         .anchor = pendulumAnchor,
-        .position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce)};
+        .position = trnsltnVecWrldSpce};
 
     SetTargetFPS(60);
     while(!WindowShouldClose()) {
         int controlPanelStart = GetScreenWidth() - (panelWidth + 3 * padding);
 
-        if(massA.pendulumLength != (int)pendulumLengthPxl ||
+        if(setMode != dropdownBoxActive ||
+           pendulumLengthPxl != inPendulumLengthPxl ||
            massA.mass != firstMass) {
-            massA.pendulumLength = (int)pendulumLengthPxl;
+            pixelScaleFactor = pow(10, -dropdownBoxActive);
+            setMode = dropdownBoxActive;
+
+            massA.pendulumLength = inPendulumLengthPxl * pixelScaleFactor;
+            pendulumLengthPxl = inPendulumLengthPxl;
+
+            switch(dropdownBoxActive) {
+                default:
+                case 0:
+                    massScaleFactor = 1;
+                    break;
+                case 1:
+                case 2:
+                    massScaleFactor = 0.5;
+                    break;
+            }
+
             massA.mass = firstMass;
+
             reset = true;
         }
 
@@ -171,7 +202,9 @@ int main() {
             trnsltnVecPxlSpce.x = 0;
             trnsltnVecPxlSpce.y = pendulumLengthPxl;
             trnsltnVecPxlSpce = Vector2Rotate(trnsltnVecPxlSpce, amplitude);
-            massA.position = Vector2Add(pendulumAnchor, trnsltnVecPxlSpce);
+            trnsltnVecWrldSpce =
+                Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
+            massA.position = trnsltnVecWrldSpce;
             massA.velocity = Vector2Zero();
             massA.accNet = Vector2Zero();
             massA.tensionSum = Vector2Zero();
@@ -187,7 +220,7 @@ int main() {
 
         float dt = GetFrameTime();
         if(!pause)
-            accelerateMass(&massA, dt * simFactor, g * gFactor);
+            accelerateMass(&massA, dt, g * gFactor);
 
         BeginDrawing();
         ClearBackground((struct Color){33, 33, 33, 0xFF});
@@ -202,12 +235,20 @@ int main() {
         float guiElementYStep = 20 + padding * 2;
         int guiSliderPaddingSt = 15 * padding;
         int guiSliderPaddingEnd = 40 * padding;
+
+        float minLen = 10 * pixelScaleFactor;
+        float maxLen = 1000 * pixelScaleFactor;
+        float minMass = 10 * massScaleFactor;
+        float maxMass = 200 * massScaleFactor;
+
         char* buttonText = "";
         if(pause) {
             buttonText = "Start";
         } else {
             buttonText = "Pause";
         }
+        if(dropDownEditMode)
+            GuiLock();
         if(GuiButton(
                (Rectangle){guiElementsXStart + 70,
                            guiElementsYStart + nGuiElement * guiElementYStep,
@@ -220,6 +261,7 @@ int main() {
                         guiElementsYStart + nGuiElement++ * guiElementYStep, 50,
                         guiElementHeight},
             "Reset");
+        nGuiElement++;
         GuiCheckBox(
             (Rectangle){guiElementsXStart + 10,
                         guiElementsYStart + nGuiElement * guiElementYStep + 3,
@@ -234,16 +276,6 @@ int main() {
             (Rectangle){guiElementsXStart,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            TextFormat("Simulation Speed Factor: %.3f", simFactor));
-        GuiSlider(
-            (Rectangle){guiElementsXStart + guiSliderPaddingSt,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            "1", "10", &simFactor, 1, 10);
-        GuiLabel(
-            (Rectangle){guiElementsXStart,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
             TextFormat("g Factor: %.3f = %.3f m/s^2", gFactor, gFactor * g));
         GuiSlider(
             (Rectangle){guiElementsXStart + guiSliderPaddingSt,
@@ -254,22 +286,27 @@ int main() {
             (Rectangle){guiElementsXStart,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            TextFormat("Pendulum Length: %.3f m", pendulumLengthPxl));
+            TextFormat("Pendulum Length: %.3f m",
+                       inPendulumLengthPxl * pixelScaleFactor));
         GuiSlider(
             (Rectangle){guiElementsXStart + guiSliderPaddingSt,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            "10", "1000", &pendulumLengthPxl, 10, 1000);
+            TextFormat("%.1f", minLen), TextFormat("%.1f", maxLen),
+            &inPendulumLengthPxl, 10, 1000);
+        GuiSlider(
+            (Rectangle){
+                guiElementsXStart + guiSliderPaddingSt,
+                guiElementsYStart + (nGuiElement++ + 1) * guiElementYStep,
+                panelWidth - guiSliderPaddingEnd, guiElementHeight},
+            TextFormat("%.1f", minMass), TextFormat("%.1f", maxMass),
+            &firstMass, minMass, maxMass);
         GuiLabel(
-            (Rectangle){guiElementsXStart,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
+            (Rectangle){
+                guiElementsXStart,
+                guiElementsYStart + (nGuiElement++ - 1) * guiElementYStep,
+                panelWidth - guiSliderPaddingEnd, guiElementHeight},
             TextFormat("Mass: %.3f kg", firstMass));
-        GuiSlider(
-            (Rectangle){guiElementsXStart + guiSliderPaddingSt,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            "10", "200", &firstMass, 10, 200);
 
         nGuiElement++;
         int legendVectorOffset = 5;
@@ -319,28 +356,46 @@ int main() {
         DrawText("Velocity", guiElementsXStart + guiSliderPaddingSt + 170,
                  guiElementsYStart + nGuiElement++ * guiElementYStep, 1, WHITE);
 
-        DrawLineEx(pendulumAnchor, massA.position, stringWidth, RAYWHITE);
+        if(dropDownEditMode)
+            GuiUnlock();
+
+        GuiSetStyle(DROPDOWNBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+        GuiSetStyle(DROPDOWNBOX, TEXT_PADDING, 0);
+        if(GuiDropdownBox(
+               (Rectangle){guiElementsXStart + guiSliderPaddingSt,
+                           guiElementsYStart + guiElementYStep,
+                           panelWidth - guiSliderPaddingEnd, guiElementHeight},
+               "1 pixel /m;10 pixel / m ;100 pixel / m", &dropdownBoxActive,
+               dropDownEditMode))
+            dropDownEditMode = !dropDownEditMode;
+
+        Vector2 massAPosPixelSpace = Vector2Add(
+            massA.anchor, Vector2Scale(massA.position, 1 / pixelScaleFactor));
+
+        DrawLineEx(pendulumAnchor, massAPosPixelSpace, stringWidth, RAYWHITE);
 
         DrawCircleV(pendulumAnchor, 10.0f, BLACK);
-        DrawCircleV(massA.position, massA.mass, MAROON);
+        DrawCircleV(massAPosPixelSpace, massA.mass / massScaleFactor, MAROON);
 
         if(drawForces && !isDragging) {
-            drawVector(massA.position,
+            drawVector(massAPosPixelSpace,
                        (struct Vector2){0.0f, massA.mass * g * gFactor}, BLUE,
                        VECTOR_DRAW_SCALE);
-            drawVector(massA.position, Vector2Negate(massA.tensionGravityComp),
-                       RED, VECTOR_DRAW_SCALE);
-            drawVector(
-                Vector2Subtract(massA.position, massA.tensionGravityComp),
-                massA.tensionCentripetalComp, PINK, VECTOR_DRAW_SCALE);
-            drawVector(massA.position, massA.accGravityComp, GREEN,
+            drawVector(massAPosPixelSpace,
+                       Vector2Negate(massA.tensionGravityComp), RED,
                        VECTOR_DRAW_SCALE);
-            drawVector(massA.position, massA.accNet, YELLOW, VECTOR_DRAW_SCALE);
+            drawVector(
+                Vector2Subtract(massAPosPixelSpace, massA.tensionGravityComp),
+                massA.tensionCentripetalComp, PINK, VECTOR_DRAW_SCALE);
+            drawVector(massAPosPixelSpace, massA.accGravityComp, GREEN,
+                       VECTOR_DRAW_SCALE);
+            drawVector(massAPosPixelSpace, massA.accNet, YELLOW,
+                       VECTOR_DRAW_SCALE);
         }
 
         if(drawVelocities) {
-            drawVector(massA.position, Vector2Scale(massA.velocity, 20), WHITE,
-                       VECTOR_DRAW_SCALE);
+            drawVector(massAPosPixelSpace, Vector2Scale(massA.velocity, 20),
+                       WHITE, VECTOR_DRAW_SCALE);
         }
 
         EndDrawing();
