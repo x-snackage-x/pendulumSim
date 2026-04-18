@@ -164,6 +164,12 @@ int main() {
         .anchor = pendulumAnchor,
         .position = trnsltnVecWrldSpce};
 
+    float projection = 0.0f;
+    float projectionBuff = 0.0f;
+    float currVMassA = 0.0f;
+    float periodTime = 0.0f;
+    float periodTimeDisplay = 0.0f;
+    float pendulumAmplitude = 0.0f;
     SetTargetFPS(60);
     while(!WindowShouldClose()) {
         int controlPanelStart = GetScreenWidth() - (panelWidth + 3 * padding);
@@ -282,6 +288,20 @@ int main() {
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
             "Moon", "Jupiter", &gFactor, 0.1656f, 2.527f);
+
+        if(dropDownEditMode)
+            GuiUnlock();
+
+        GuiSetStyle(DROPDOWNBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+        GuiSetStyle(DROPDOWNBOX, TEXT_PADDING, 0);
+        if(GuiDropdownBox(
+               (Rectangle){guiElementsXStart + guiSliderPaddingSt,
+                           guiElementsYStart + guiElementYStep,
+                           panelWidth - guiSliderPaddingEnd, guiElementHeight},
+               "1 pixel /m;10 pixel / m ;100 pixel / m", &dropdownBoxActive,
+               dropDownEditMode))
+            dropDownEditMode = !dropDownEditMode;
+
         GuiLabel(
             (Rectangle){guiElementsXStart,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
@@ -308,7 +328,49 @@ int main() {
                 panelWidth - guiSliderPaddingEnd, guiElementHeight},
             TextFormat("Mass: %.3f kg", firstMass));
 
+        // Draw Status Box
         nGuiElement++;
+        DrawRectangleLines(guiElementsXStart,
+                           guiElementsYStart + nGuiElement * guiElementYStep,
+                           panelWidth - 4 * padding, 3 * guiElementHeight,
+                           RAYWHITE);
+
+        projectionBuff = projection;
+        projection = Vector2DotProduct(massA.velocity, (Vector2){-1.0f, 0.0f});
+
+        if((projectionBuff < 0.0 && projection > 0.0) ||
+           (projectionBuff > 0.0 && projection < 0.0)) {
+            periodTimeDisplay = periodTime;
+            periodTime = 0.0f;
+        } else if(!pause) {
+            periodTime += dt;
+        }
+
+        pendulumAmplitude =
+            Vector2Angle((Vector2){0.0f, 1.0f}, massA.position) * RAD2DEG * -1;
+        currVMassA = Vector2Length(massA.velocity);
+
+        DrawText(
+            TextFormat("Period: %.3f s", periodTimeDisplay),
+            guiElementsXStart + 2 * padding,
+            guiElementsYStart + nGuiElement * guiElementYStep + 2 * padding, 1,
+            WHITE);
+
+        DrawText(
+            TextFormat("Angle: %.0f°", pendulumAmplitude),
+            guiElementsXStart + 2 * padding + 85,
+            guiElementsYStart + nGuiElement++ * guiElementYStep + 2 * padding,
+            1, WHITE);
+        DrawText(TextFormat("Err. Pendulum len.: %.2f m",
+                            Vector2Length(massA.position) -
+                                pendulumLengthPxl * pixelScaleFactor),
+                 guiElementsXStart + 2 * padding,
+                 guiElementsYStart + nGuiElement++ * guiElementYStep, 1, WHITE);
+        DrawText(TextFormat("Velocity: %.2f m/s", currVMassA),
+                 guiElementsXStart + 2 * padding,
+                 guiElementsYStart + nGuiElement++ * guiElementYStep - padding,
+                 1, WHITE);
+
         int legendVectorOffset = 5;
         drawVectorLegend(
             (Vector2){guiElementsXStart, guiElementsYStart +
@@ -355,19 +417,6 @@ int main() {
             WHITE);
         DrawText("Velocity", guiElementsXStart + guiSliderPaddingSt + 170,
                  guiElementsYStart + nGuiElement++ * guiElementYStep, 1, WHITE);
-
-        if(dropDownEditMode)
-            GuiUnlock();
-
-        GuiSetStyle(DROPDOWNBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
-        GuiSetStyle(DROPDOWNBOX, TEXT_PADDING, 0);
-        if(GuiDropdownBox(
-               (Rectangle){guiElementsXStart + guiSliderPaddingSt,
-                           guiElementsYStart + guiElementYStep,
-                           panelWidth - guiSliderPaddingEnd, guiElementHeight},
-               "1 pixel /m;10 pixel / m ;100 pixel / m", &dropdownBoxActive,
-               dropDownEditMode))
-            dropDownEditMode = !dropDownEditMode;
 
         Vector2 massAPosPixelSpace = Vector2Add(
             massA.anchor, Vector2Scale(massA.position, 1 / pixelScaleFactor));
