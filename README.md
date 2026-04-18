@@ -1,7 +1,7 @@
 # PendulumSim (WIP)
 A kinematics based pendulum simulation built with raylib.
 
-https://github.com/user-attachments/assets/2f447524-2d8b-4995-aa1e-6e8eee9d47ef
+https://github.com/user-attachments/assets/22576ce8-0da3-446a-8de0-3054a0e0cfb8
 
 The project was built with using Jeffery Myers's [Raylib-Quickstart](https://github.com/raylib-extras/raylib-quickstart). Original *README.md* provided under *README_RAYLIBQS.md*.
 
