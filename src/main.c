@@ -10,15 +10,16 @@
 #include "raygui.h"
 
 #define VECTOR_DRAW_SCALE 1.0f
-float pixelScaleFactor = 1e-1f;
-float massScaleFactor = 0.5f;
+float timeStepFactor = 1e2f;
+float pixelScaleFactor = 1e-0f;
+float massScaleFactor = 1.0f;
 float pendulumLengthPxl = 300.0f;
 float firstMass = 25.f;
 
 float inPendulumLengthPxl = 300.0f;
 
-int setMode = 1;
-int dropdownBoxActive = 1;
+int setMode = 0;
+int dropdownBoxActive = 0;
 bool dropDownEditMode = false;
 
 typedef struct PendulumMass {
@@ -34,6 +35,14 @@ typedef struct PendulumMass {
     Vector2 position;
     Vector2 velocity;
 } PendulumMass;
+
+#define TRAIL_POINT_SIZE 3
+#define TRAIL_SIZE 1000
+typedef struct trail {
+    Color color;
+    int size;
+    Vector2 trailPoints[TRAIL_SIZE];
+} trail;
 
 void resetMass(PendulumMass* mass,
                Vector2 pendulumAnchor,
@@ -164,6 +173,11 @@ int main() {
         .anchor = pendulumAnchor,
         .position = trnsltnVecWrldSpce};
 
+    bool trailOn = true;
+    trail trailA = {0};
+    trailA.color = MAROON;
+    int trailAIndex = -1;
+
     float projection = 0.0f;
     float projectionBuff = 0.0f;
     float currVMassA = 0.0f;
@@ -214,6 +228,9 @@ int main() {
             massA.velocity = Vector2Zero();
             massA.accNet = Vector2Zero();
             massA.tensionSum = Vector2Zero();
+
+            trailA.size = 0;
+            trailAIndex = -1;
 
             gFactor = 1.0f;
             reset = false;
@@ -278,6 +295,11 @@ int main() {
                         guiElementsYStart + nGuiElement++ * guiElementYStep + 3,
                         15, 15},
             "Velocity Vectors", &drawVelocities);
+        GuiCheckBox(
+            (Rectangle){guiElementsXStart + 10,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep + 3,
+                        15, 15},
+            "Trails", &trailOn);
         GuiLabel(
             (Rectangle){guiElementsXStart,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
@@ -420,6 +442,18 @@ int main() {
 
         Vector2 massAPosPixelSpace = Vector2Add(
             massA.anchor, Vector2Scale(massA.position, 1 / pixelScaleFactor));
+
+        if(!pause) {
+            trailAIndex = ++trailAIndex % TRAIL_SIZE;
+            trailA.trailPoints[trailAIndex] = massAPosPixelSpace;
+            trailA.size += trailA.size < TRAIL_SIZE ? 1 : 0;
+        }
+        if(trailOn) {
+            for(int i = 0; i < trailA.size; ++i) {
+                DrawCircleV(trailA.trailPoints[i], TRAIL_POINT_SIZE,
+                            trailA.color);
+            }
+        }
 
         DrawLineEx(pendulumAnchor, massAPosPixelSpace, stringWidth, RAYWHITE);
 

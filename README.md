@@ -46,7 +46,6 @@ raylib and its dependencies:
 
 ## Todo
 
-1. Add trail
 1. Add 2nd Mass/Double Pendulum
 1. Anchor Responsive to Screen size?
 1. Add Resistance force?
