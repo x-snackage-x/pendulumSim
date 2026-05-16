@@ -10,7 +10,7 @@
 #include "raygui.h"
 
 #define VECTOR_DRAW_SCALE 1.0f
-float timeStepFactor = 1e2f;
+float timeStepFactor = 2e1f;
 float pixelScaleFactor = 1e-0f;
 float massScaleFactor = 1.0f;
 float pendulumLengthPxl = 300.0f;
@@ -23,7 +23,7 @@ int dropdownBoxActive = 0;
 bool dropDownEditMode = false;
 
 typedef struct PendulumMass {
-    int pendulumLength;
+    float pendulumLength;
     float mass;
     Vector2 tensionGravityComp;
     Vector2 tensionCentripetalComp;
@@ -99,8 +99,7 @@ void drawVectorLegend(Vector2 anchorPos, Color color) {
 void accelerateMass(PendulumMass* mass, float deltaTime, float g) {
     Vector2 gravityVector = {0.0f, mass->mass * g};
 
-    Vector2 tensionVecNorm =
-        Vector2Normalize(Vector2Subtract(mass->position, Vector2Zero()));
+    Vector2 tensionVecNorm = Vector2Normalize(Vector2Negate(mass->position));
 
     float amplitude = Vector2Angle(gravityVector, tensionVecNorm);
 
@@ -115,7 +114,7 @@ void accelerateMass(PendulumMass* mass, float deltaTime, float g) {
     float vSquared = Vector2LengthSqr(mass->velocity);
 
     mass->tensionCentripetalComp =
-        Vector2Scale(tensionVecNorm, -cntrptlForceFactor * vSquared);
+        Vector2Scale(tensionVecNorm, cntrptlForceFactor * vSquared);
 
     // Sum Forces
     if(vSquared == 0.0f) {
@@ -242,8 +241,12 @@ int main() {
             pause = !pause;
 
         float dt = GetFrameTime();
-        if(!pause)
-            accelerateMass(&massA, dt, g * gFactor);
+        if(!pause) {
+            // accelerateMass(&massA, dt, g * gFactor);
+            for(int i = 0; i < timeStepFactor; ++i) {
+                accelerateMass(&massA, dt / timeStepFactor, g * gFactor);
+            }
+        }
 
         BeginDrawing();
         ClearBackground((struct Color){33, 33, 33, 0xFF});
@@ -383,9 +386,12 @@ int main() {
             guiElementsXStart + 2 * padding + 85,
             guiElementsYStart + nGuiElement++ * guiElementYStep + 2 * padding,
             1, WHITE);
-        DrawText(TextFormat("Err. Pendulum len.: %.2f m",
+        DrawText(TextFormat("Err. Pendulum len.: %.2f m | %.2f%%",
                             Vector2Length(massA.position) -
-                                pendulumLengthPxl * pixelScaleFactor),
+                                pendulumLengthPxl * pixelScaleFactor,
+                            (1.0f - pendulumLengthPxl * pixelScaleFactor /
+                                        Vector2Length(massA.position)) *
+                                100.0f),
                  guiElementsXStart + 2 * padding,
                  guiElementsYStart + nGuiElement++ * guiElementYStep, 1, WHITE);
         DrawText(TextFormat("Velocity: %.2f m/s", currVMassA),
