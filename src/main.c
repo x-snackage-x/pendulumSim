@@ -9,20 +9,75 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
+void drawButtons(bool* pause,
+                 bool* reset,
+                 int* nGuiElement,
+                 float guiElementsXStart,
+                 float guiElementsYStart,
+                 float guiElementHeight,
+                 float guiElementYStep,
+                 float padding);
+void drawCheckBoxes(bool* drawForces,
+                    bool* drawVelocities,
+                    bool* trailAOn,
+                    bool* trailBOn,
+                    int* nGuiElement,
+                    float guiElementsXStart,
+                    float guiElementsYStart,
+                    float guiElementHeight,
+                    float guiElementYStep,
+                    float padding,
+                    int panelWidth);
+void drawGravityFactorSlider(float* gFactor,
+                             float g,
+                             int* nGuiElement,
+                             float guiElementsXStart,
+                             float guiElementsYStart,
+                             float guiElementHeight,
+                             float guiElementYStep,
+                             int guiSliderPaddingSt,
+                             int guiSliderPaddingEnd,
+                             int panelWidth);
+void drawMassAControls(int* nGuiElement,
+                       float minLen,
+                       float maxLen,
+                       float minMass,
+                       float maxMass,
+                       float guiElementsXStart,
+                       float guiElementsYStart,
+                       float guiElementHeight,
+                       float guiElementYStep,
+                       int guiSliderPaddingSt,
+                       int guiSliderPaddingEnd,
+                       int panelWidth);
+void drawVectorLegendBox(int* nGuiElement,
+                         float guiElementsXStart,
+                         float guiElementsYStart,
+                         float guiElementYStep,
+                         int guiSliderPaddingSt,
+                         int legendVectorOffset);
+
 #define VECTOR_DRAW_SCALE 1.0f
 float timeStepFactor = 2e1f;
 float pixelScaleFactor = 1e-0f;
-float massScaleFactor = 1.0f;
-float pendulumLengthPxl = 300.0f;
-float firstMass = 25.f;
 
+float firstMass = 25.f;
+float secondMass = 25.f;
+
+float pendulumLengthPxl = 300.0f;
 float inPendulumLengthPxl = 300.0f;
+
+float pendulumLengthTwoPxl = 200.0f;
+float inPendulumLengthTwoPxl = 200.0f;
 
 int setMode = 0;
 int dropdownBoxActive = 0;
 bool dropDownEditMode = false;
 
-typedef struct PendulumMass {
+typedef struct PendulumMass PendulumMass;
+struct PendulumMass {
+    PendulumMass* subMass;
+
     float pendulumLength;
     float mass;
     Vector2 tensionGravityComp;
@@ -31,12 +86,11 @@ typedef struct PendulumMass {
 
     Vector2 tensionSum;
     Vector2 accNet;
-    Vector2 anchor;
     Vector2 position;
     Vector2 velocity;
-} PendulumMass;
+};
 
-#define TRAIL_POINT_SIZE 3
+#define TRAIL_POINT_SIZE 2
 #define TRAIL_SIZE 1000
 typedef struct trail {
     Color color;
@@ -149,6 +203,8 @@ int main() {
     const int screenHeight = 700;
     Vector2 origin = {0.0f, 0.0f};
 
+    bool doublePendulum = false;
+
     Vector2 mousePosition = {0.0f};
 
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
@@ -163,19 +219,33 @@ int main() {
 
     Vector2 trnsltnVecPxlSpce = {.y = pendulumLengthPxl};
     trnsltnVecPxlSpce = Vector2Rotate(trnsltnVecPxlSpce, amplitude);
-
     Vector2 trnsltnVecWrldSpce =
         Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
     PendulumMass massA = {
-        .mass = 25.0f,
+        .mass = firstMass,
         .pendulumLength = pendulumLengthPxl * pixelScaleFactor,
-        .anchor = pendulumAnchor,
         .position = trnsltnVecWrldSpce};
 
-    bool trailOn = true;
+    trnsltnVecPxlSpce.x = 0;
+    trnsltnVecPxlSpce.y = pendulumLengthTwoPxl;
+    trnsltnVecWrldSpce = Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
+    PendulumMass massB = {
+        .mass = secondMass,
+        .pendulumLength = pendulumLengthTwoPxl * pixelScaleFactor,
+        .position = Vector2Add(massA.position, trnsltnVecWrldSpce)};
+    if(doublePendulum) {
+        massA.subMass = &massB;
+    }
+
+    bool trailAOn = true;
     trail trailA = {0};
     trailA.color = MAROON;
     int trailAIndex = -1;
+
+    bool trailBOn = false;
+    trail trailB = {0};
+    trailB.color = DARKGREEN;
+    int trailBIndex = -1;
 
     float projection = 0.0f;
     float projectionBuff = 0.0f;
@@ -189,25 +259,25 @@ int main() {
 
         if(setMode != dropdownBoxActive ||
            pendulumLengthPxl != inPendulumLengthPxl ||
-           massA.mass != firstMass) {
+           massA.mass != firstMass ||
+           pendulumLengthTwoPxl != inPendulumLengthTwoPxl ||
+           massB.mass != secondMass) {
             pixelScaleFactor = pow(10, -dropdownBoxActive);
             setMode = dropdownBoxActive;
 
             massA.pendulumLength = inPendulumLengthPxl * pixelScaleFactor;
             pendulumLengthPxl = inPendulumLengthPxl;
-
-            switch(dropdownBoxActive) {
-                default:
-                case 0:
-                    massScaleFactor = 1;
-                    break;
-                case 1:
-                case 2:
-                    massScaleFactor = 0.5;
-                    break;
-            }
+            massB.pendulumLength = inPendulumLengthTwoPxl * pixelScaleFactor;
+            pendulumLengthTwoPxl = inPendulumLengthTwoPxl;
 
             massA.mass = firstMass;
+            massB.mass = secondMass;
+
+            if(doublePendulum) {
+                massA.subMass = &massB;
+            } else {
+                massA.subMass = NULL;
+            }
 
             reset = true;
         }
@@ -228,8 +298,20 @@ int main() {
             massA.accNet = Vector2Zero();
             massA.tensionSum = Vector2Zero();
 
+            trnsltnVecPxlSpce.x = 0;
+            trnsltnVecPxlSpce.y = pendulumLengthTwoPxl;
+            trnsltnVecWrldSpce =
+                Vector2Scale(trnsltnVecPxlSpce, pixelScaleFactor);
+            massB.position = Vector2Add(massA.position, trnsltnVecWrldSpce);
+            massB.velocity = Vector2Zero();
+            massB.accNet = Vector2Zero();
+            massB.tensionSum = Vector2Zero();
+
             trailA.size = 0;
             trailAIndex = -1;
+
+            trailB.size = 0;
+            trailBIndex = -1;
 
             gFactor = 1.0f;
             reset = false;
@@ -264,55 +346,30 @@ int main() {
 
         float minLen = 10 * pixelScaleFactor;
         float maxLen = 1000 * pixelScaleFactor;
-        float minMass = 10 * massScaleFactor;
-        float maxMass = 200 * massScaleFactor;
+        float minMass = 1;
+        float maxMass = 100;
 
-        char* buttonText = "";
-        if(pause) {
-            buttonText = "Start";
-        } else {
-            buttonText = "Pause";
-        }
         if(dropDownEditMode)
             GuiLock();
-        if(GuiButton(
-               (Rectangle){guiElementsXStart + 70,
-                           guiElementsYStart + nGuiElement * guiElementYStep,
-                           40, guiElementHeight},
-               buttonText)) {
-            pause = !pause;
-        }
-        reset = GuiButton(
-            (Rectangle){guiElementsXStart + 70 + 40 + padding * 4,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep, 50,
-                        guiElementHeight},
-            "Reset");
+
+        drawButtons(&pause, &reset, &nGuiElement, guiElementsXStart,
+                    guiElementsYStart, guiElementHeight, guiElementYStep,
+                    padding);
         nGuiElement++;
-        GuiCheckBox(
-            (Rectangle){guiElementsXStart + 10,
-                        guiElementsYStart + nGuiElement * guiElementYStep + 3,
-                        15, 15},
-            "Force Vectors", &drawForces);
-        GuiCheckBox(
-            (Rectangle){guiElementsXStart + panelWidth / 2,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep + 3,
-                        15, 15},
-            "Velocity Vectors", &drawVelocities);
-        GuiCheckBox(
-            (Rectangle){guiElementsXStart + 10,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep + 3,
-                        15, 15},
-            "Trails", &trailOn);
-        GuiLabel(
-            (Rectangle){guiElementsXStart,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            TextFormat("g Factor: %.3f = %.3f m/s^2", gFactor, gFactor * g));
-        GuiSlider(
-            (Rectangle){guiElementsXStart + guiSliderPaddingSt,
-                        guiElementsYStart + nGuiElement++ * guiElementYStep,
-                        panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            "Moon", "Jupiter", &gFactor, 0.1656f, 2.527f);
+
+        drawCheckBoxes(&drawForces, &drawVelocities, &trailAOn, &trailBOn,
+                       &nGuiElement, guiElementsXStart, guiElementsYStart,
+                       guiElementHeight, guiElementYStep, padding, panelWidth);
+
+        drawGravityFactorSlider(&gFactor, g, &nGuiElement, guiElementsXStart,
+                                guiElementsYStart, guiElementHeight,
+                                guiElementYStep, guiSliderPaddingSt,
+                                guiSliderPaddingEnd, panelWidth);
+
+        drawMassAControls(&nGuiElement, minLen, maxLen, minMass, maxMass,
+                          guiElementsXStart, guiElementsYStart,
+                          guiElementHeight, guiElementYStep, guiSliderPaddingSt,
+                          guiSliderPaddingEnd, panelWidth);
 
         if(dropDownEditMode)
             GuiUnlock();
@@ -327,31 +384,37 @@ int main() {
                dropDownEditMode))
             dropDownEditMode = !dropDownEditMode;
 
+        GuiCheckBox(
+            (Rectangle){guiElementsXStart + 10,
+                        guiElementsYStart + nGuiElement++ * guiElementYStep + 3,
+                        15, 15},
+            "Double Pendulum", &doublePendulum);
+
         GuiLabel(
             (Rectangle){guiElementsXStart,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            TextFormat("Pendulum Length: %.3f m",
-                       inPendulumLengthPxl * pixelScaleFactor));
+            TextFormat("Pendulum Length B: %.3f m",
+                       inPendulumLengthTwoPxl * pixelScaleFactor));
         GuiSlider(
             (Rectangle){guiElementsXStart + guiSliderPaddingSt,
                         guiElementsYStart + nGuiElement++ * guiElementYStep,
                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
             TextFormat("%.1f", minLen), TextFormat("%.1f", maxLen),
-            &inPendulumLengthPxl, 10, 1000);
+            &inPendulumLengthTwoPxl, 10, 1000);
         GuiSlider(
             (Rectangle){
                 guiElementsXStart + guiSliderPaddingSt,
                 guiElementsYStart + (nGuiElement++ + 1) * guiElementYStep,
                 panelWidth - guiSliderPaddingEnd, guiElementHeight},
             TextFormat("%.1f", minMass), TextFormat("%.1f", maxMass),
-            &firstMass, minMass, maxMass);
+            &secondMass, minMass, maxMass);
         GuiLabel(
             (Rectangle){
                 guiElementsXStart,
                 guiElementsYStart + (nGuiElement++ - 1) * guiElementYStep,
                 panelWidth - guiSliderPaddingEnd, guiElementHeight},
-            TextFormat("Mass: %.3f kg", firstMass));
+            TextFormat("Mass B: %.3f kg", secondMass));
 
         // Draw Status Box
         nGuiElement++;
@@ -400,71 +463,47 @@ int main() {
                  1, WHITE);
 
         int legendVectorOffset = 5;
-        drawVectorLegend(
-            (Vector2){guiElementsXStart, guiElementsYStart +
-                                             nGuiElement * guiElementYStep +
-                                             legendVectorOffset},
-            RED);
-        DrawText("F-Tension(G component)",
-                 guiElementsXStart + guiSliderPaddingSt,
-                 guiElementsYStart + nGuiElement++ * guiElementYStep, 1, RED);
-        drawVectorLegend(
-            (Vector2){guiElementsXStart, guiElementsYStart +
-                                             nGuiElement * guiElementYStep +
-                                             legendVectorOffset},
-            PINK);
-        DrawText("F-Tension(Centripetal component)",
-                 guiElementsXStart + guiSliderPaddingSt,
-                 guiElementsYStart + nGuiElement++ * guiElementYStep, 1, PINK);
-        drawVectorLegend(
-            (Vector2){guiElementsXStart, guiElementsYStart +
-                                             nGuiElement * guiElementYStep +
-                                             legendVectorOffset},
-            GREEN);
-        DrawText("F-Tangential(Gravity component)",
-                 guiElementsXStart + guiSliderPaddingSt,
-                 guiElementsYStart + nGuiElement++ * guiElementYStep, 1, GREEN);
-        drawVectorLegend(
-            (Vector2){guiElementsXStart, guiElementsYStart +
-                                             nGuiElement * guiElementYStep +
-                                             legendVectorOffset},
-            BLUE);
-        DrawText("F-Gravity", guiElementsXStart + guiSliderPaddingSt,
-                 guiElementsYStart + nGuiElement * guiElementYStep, 1, BLUE);
-        drawVectorLegend(
-            (Vector2){guiElementsXStart + 95,
-                      guiElementsYStart + nGuiElement * guiElementYStep +
-                          legendVectorOffset},
-            YELLOW);
-        DrawText("F-Net", guiElementsXStart + guiSliderPaddingSt + 95,
-                 guiElementsYStart + nGuiElement * guiElementYStep, 1, YELLOW);
-        drawVectorLegend(
-            (Vector2){guiElementsXStart + 170,
-                      guiElementsYStart + nGuiElement * guiElementYStep +
-                          legendVectorOffset},
-            WHITE);
-        DrawText("Velocity", guiElementsXStart + guiSliderPaddingSt + 170,
-                 guiElementsYStart + nGuiElement++ * guiElementYStep, 1, WHITE);
+        drawVectorLegendBox(&nGuiElement, guiElementsXStart, guiElementsYStart,
+                            guiElementYStep, guiSliderPaddingSt,
+                            legendVectorOffset);
 
         Vector2 massAPosPixelSpace = Vector2Add(
-            massA.anchor, Vector2Scale(massA.position, 1 / pixelScaleFactor));
+            pendulumAnchor, Vector2Scale(massA.position, 1 / pixelScaleFactor));
+        Vector2 massBPosPixelSpace = Vector2Add(
+            pendulumAnchor, Vector2Scale(massB.position, 1 / pixelScaleFactor));
 
         if(!pause) {
             trailAIndex = ++trailAIndex % TRAIL_SIZE;
             trailA.trailPoints[trailAIndex] = massAPosPixelSpace;
             trailA.size += trailA.size < TRAIL_SIZE ? 1 : 0;
+            trailBIndex = ++trailBIndex % TRAIL_SIZE;
+            trailB.trailPoints[trailBIndex] = massBPosPixelSpace;
+            trailB.size += trailB.size < TRAIL_SIZE ? 1 : 0;
         }
-        if(trailOn) {
+        if(trailAOn) {
             for(int i = 0; i < trailA.size; ++i) {
                 DrawCircleV(trailA.trailPoints[i], TRAIL_POINT_SIZE,
                             trailA.color);
             }
         }
+        if(doublePendulum && trailBOn) {
+            for(int i = 0; i < trailB.size; ++i) {
+                DrawCircleV(trailB.trailPoints[i], TRAIL_POINT_SIZE,
+                            trailB.color);
+            }
+        } else if(!doublePendulum && trailBOn) {
+            trailBOn = false;
+        }
 
         DrawLineEx(pendulumAnchor, massAPosPixelSpace, stringWidth, RAYWHITE);
+        if(doublePendulum)
+            DrawLineEx(massAPosPixelSpace, massBPosPixelSpace, stringWidth,
+                       RAYWHITE);
 
         DrawCircleV(pendulumAnchor, 10.0f, BLACK);
-        DrawCircleV(massAPosPixelSpace, massA.mass / massScaleFactor, MAROON);
+        DrawCircleV(massAPosPixelSpace, massA.mass, MAROON);
+        if(doublePendulum)
+            DrawCircleV(massBPosPixelSpace, massB.mass, DARKGREEN);
 
         if(drawForces && !isDragging) {
             drawVector(massAPosPixelSpace,
@@ -492,4 +531,174 @@ int main() {
 
     CloseWindow();
     return 0;
+}
+
+void drawButtons(bool* pause,
+                 bool* reset,
+                 int* nGuiElement,
+                 float guiElementsXStart,
+                 float guiElementsYStart,
+                 float guiElementHeight,
+                 float guiElementYStep,
+                 float padding) {
+    char* buttonText = "";
+    if(*pause) {
+        buttonText = "Start";
+    } else {
+        buttonText = "Pause";
+    }
+
+    if(GuiButton((Rectangle){guiElementsXStart + 70,
+                             guiElementsYStart + *nGuiElement * guiElementYStep,
+                             40, guiElementHeight},
+                 buttonText)) {
+        *pause = !*pause;
+    }
+    *reset = GuiButton(
+        (Rectangle){guiElementsXStart + 70 + 40 + padding * 4,
+                    guiElementsYStart + (*nGuiElement)++ * guiElementYStep, 50,
+                    guiElementHeight},
+        "Reset");
+}
+
+void drawCheckBoxes(bool* drawForces,
+                    bool* drawVelocities,
+                    bool* trailAOn,
+                    bool* trailBOn,
+                    int* nGuiElement,
+                    float guiElementsXStart,
+                    float guiElementsYStart,
+                    float guiElementHeight,
+                    float guiElementYStep,
+                    float padding,
+                    int panelWidth) {
+    GuiCheckBox(
+        (Rectangle){guiElementsXStart + 10,
+                    guiElementsYStart + *nGuiElement * guiElementYStep + 3, 15,
+                    15},
+        "Force Vectors", drawForces);
+    GuiCheckBox(
+        (Rectangle){guiElementsXStart + panelWidth / 2,
+                    guiElementsYStart + (*nGuiElement)++ * guiElementYStep + 3,
+                    15, 15},
+        "Velocity Vectors", drawVelocities);
+    GuiCheckBox(
+        (Rectangle){guiElementsXStart + 10,
+                    guiElementsYStart + *nGuiElement * guiElementYStep + 3, 15,
+                    15},
+        "Trails A", trailAOn);
+    GuiCheckBox(
+        (Rectangle){guiElementsXStart + panelWidth / 2,
+                    guiElementsYStart + (*nGuiElement)++ * guiElementYStep + 3,
+                    15, 15},
+        "Trails B", trailBOn);
+}
+
+void drawGravityFactorSlider(float* gFactor,
+                             float g,
+                             int* nGuiElement,
+                             float guiElementsXStart,
+                             float guiElementsYStart,
+                             float guiElementHeight,
+                             float guiElementYStep,
+                             int guiSliderPaddingSt,
+                             int guiSliderPaddingEnd,
+                             int panelWidth) {
+    GuiLabel((Rectangle){guiElementsXStart,
+                         guiElementsYStart + (*nGuiElement)++ * guiElementYStep,
+                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
+             TextFormat("g Factor: %.3f = %.3f m/s^2", *gFactor, *gFactor * g));
+    GuiSlider(
+        (Rectangle){guiElementsXStart + guiSliderPaddingSt,
+                    guiElementsYStart + (*nGuiElement)++ * guiElementYStep,
+                    panelWidth - guiSliderPaddingEnd, guiElementHeight},
+        "Moon", "Jupiter", gFactor, 0.1656f, 2.527f);
+}
+
+void drawMassAControls(int* nGuiElement,
+                       float minLen,
+                       float maxLen,
+                       float minMass,
+                       float maxMass,
+                       float guiElementsXStart,
+                       float guiElementsYStart,
+                       float guiElementHeight,
+                       float guiElementYStep,
+                       int guiSliderPaddingSt,
+                       int guiSliderPaddingEnd,
+                       int panelWidth) {
+    GuiLabel((Rectangle){guiElementsXStart,
+                         guiElementsYStart + (*nGuiElement)++ * guiElementYStep,
+                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
+             TextFormat("Pendulum Length A: %.3f m",
+                        inPendulumLengthPxl * pixelScaleFactor));
+    GuiSlider(
+        (Rectangle){guiElementsXStart + guiSliderPaddingSt,
+                    guiElementsYStart + (*nGuiElement)++ * guiElementYStep,
+                    panelWidth - guiSliderPaddingEnd, guiElementHeight},
+        TextFormat("%.1f", minLen), TextFormat("%.1f", maxLen),
+        &inPendulumLengthPxl, 10, 1000);
+    GuiSlider((Rectangle){guiElementsXStart + guiSliderPaddingSt,
+                          guiElementsYStart +
+                              ((*nGuiElement)++ + 1) * guiElementYStep,
+                          panelWidth - guiSliderPaddingEnd, guiElementHeight},
+              TextFormat("%.1f", minMass), TextFormat("%.1f", maxMass),
+              &firstMass, minMass, maxMass);
+    GuiLabel((Rectangle){guiElementsXStart,
+                         guiElementsYStart +
+                             ((*nGuiElement)++ - 1) * guiElementYStep,
+                         panelWidth - guiSliderPaddingEnd, guiElementHeight},
+             TextFormat("Mass A: %.3f kg", firstMass));
+}
+
+void drawVectorLegendBox(int* nGuiElement,
+                         float guiElementsXStart,
+                         float guiElementsYStart,
+                         float guiElementYStep,
+                         int guiSliderPaddingSt,
+                         int legendVectorOffset) {
+    drawVectorLegend(
+        (Vector2){guiElementsXStart, guiElementsYStart +
+                                         *nGuiElement * guiElementYStep +
+                                         legendVectorOffset},
+        RED);
+    DrawText("F-Tension(G component)", guiElementsXStart + guiSliderPaddingSt,
+             guiElementsYStart + (*nGuiElement)++ * guiElementYStep, 1, RED);
+    drawVectorLegend(
+        (Vector2){guiElementsXStart, guiElementsYStart +
+                                         *nGuiElement * guiElementYStep +
+                                         legendVectorOffset},
+        PINK);
+    DrawText("F-Tension(Centripetal component)",
+             guiElementsXStart + guiSliderPaddingSt,
+             guiElementsYStart + (*nGuiElement)++ * guiElementYStep, 1, PINK);
+    drawVectorLegend(
+        (Vector2){guiElementsXStart, guiElementsYStart +
+                                         *nGuiElement * guiElementYStep +
+                                         legendVectorOffset},
+        GREEN);
+    DrawText("F-Tangential(Gravity component)",
+             guiElementsXStart + guiSliderPaddingSt,
+             guiElementsYStart + (*nGuiElement)++ * guiElementYStep, 1, GREEN);
+    drawVectorLegend(
+        (Vector2){guiElementsXStart, guiElementsYStart +
+                                         *nGuiElement * guiElementYStep +
+                                         legendVectorOffset},
+        BLUE);
+    DrawText("F-Gravity", guiElementsXStart + guiSliderPaddingSt,
+             guiElementsYStart + *nGuiElement * guiElementYStep, 1, BLUE);
+    drawVectorLegend(
+        (Vector2){guiElementsXStart + 95, guiElementsYStart +
+                                              *nGuiElement * guiElementYStep +
+                                              legendVectorOffset},
+        YELLOW);
+    DrawText("F-Net", guiElementsXStart + guiSliderPaddingSt + 95,
+             guiElementsYStart + *nGuiElement * guiElementYStep, 1, YELLOW);
+    drawVectorLegend(
+        (Vector2){guiElementsXStart + 170, guiElementsYStart +
+                                               *nGuiElement * guiElementYStep +
+                                               legendVectorOffset},
+        WHITE);
+    DrawText("Velocity", guiElementsXStart + guiSliderPaddingSt + 170,
+             guiElementsYStart + (*nGuiElement)++ * guiElementYStep, 1, WHITE);
 }

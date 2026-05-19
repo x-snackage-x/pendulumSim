@@ -1,5 +1,5 @@
 # PendulumSim (WIP)
-A kinematics based pendulum simulation built with raylib.
+A Newtonian mechanics based pendulum simulation built with raylib.
 
 https://github.com/user-attachments/assets/22576ce8-0da3-446a-8de0-3054a0e0cfb8
 
